@@ -238,3 +238,66 @@ Porque los detalles internos pueden revelar información sobre el código, la co
 Al comentar temporalmente `CLIENT_ORIGIN` en `servidor/.env` y volver a ejecutar `npm run dev`, el resultado esperado es que el servidor se detenga. Las evidencias de las pruebas de esta parte están en docs/capturas, Evidencia1 y Evidencia2
 
 ---
+
+## 9. Conectar el API con MongoDB
+
+### Actividad 7: explique el arranque
+
+Recorrido, en orden, desde que se escribe `npm run dev` hasta que aparece "API escuchando":
+
+| # | Archivo y línea | Qué ocurre |
+|---:|---|---|
+| 1 | `package.json` · script `dev` | `npm run dev` ejecuta `node --env-file=.env --watch src/index.js`. Node carga las variables de `.env` en `process.env`, empieza a vigilar los archivos para reiniciar con cada cambio y ejecuta `src/index.js`, que lo primero que hace es resolver sus `import`. |
+| 2 | `config/env.js` | Es el primer módulo importado. Revisa que existan `MONGODB_URI`, `DB_NAME` y `CLIENT_ORIGIN`; si falta alguna, lanza un error y el API no arranca. Si están todas, arma el objeto `config` con `puerto`, `mongoUri`, `nombreBd` y `origenCliente`. |
+| 3 | `config/db.js` · `new MongoClient` | Al importarse `db.js`, se crea el único cliente del API con `config.mongoUri`. En este momento solo lee y revisa la cadena: todavía no se conecta, y `db` sigue en `null`. |
+| 4 | `index.js` · `await conectar()` | Ya cargados los imports (incluido `app.js`), se llama a `conectar()`, que ejecuta `await cliente.connect()`: busca los servidores del clúster, establece la conexión segura y valida el usuario y la contraseña. `index.js` se queda esperando en ese `await`; si la conexión falla, el error aparece aquí y el programa no continúa. |
+| 5 | `config/db.js` · `cliente.db(…)` | Con la conexión abierta, elige la base indicada en `config.nombreBd` (`maraton`), la guarda en la variable `db` para que `obtenerDb()` la entregue después y escribe en la terminal «Conectado a MongoDB: maraton». Esta línea no comprueba que la base exista. |
+| 6 | `index.js` · `app.listen` | Solo se ejecuta si la conexión salió bien. Enciende el servidor de Express en el puerto 3000 y, cuando ya está escuchando, escribe `API escuchando en http://localhost:3000`. |
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Por qué el API se conecta a MongoDB una sola vez y no en cada petición?**
+
+Porque abrir la conexión es una operación lenta que depende de la red: hay que buscar los servidores del clúster, establecer una conexión segura y validar las credenciales. Si se hiciera en cada petición, todas las respuestas tardarían mucho más y se abrirían conexiones innecesarias hacia Atlas. Por eso el API se conecta una vez al arrancar y todas las peticiones reutilizan esa conexión; el driver mantiene internamente un grupo de conexiones abiertas (*pool*) y lo administra solo.
+
+**2. ¿Qué hace `await conectar()` y qué pasaría si se escribiera sin `await`?**
+
+`await conectar()` hace que `index.js` espere a que la conexión termine antes de ejecutar la línea siguiente (`app.listen`). Si la conexión falla, el error se lanza en ese punto y el API no arranca. Sin `await`, `conectar()` empezaría a conectarse, pero `index.js` no esperaría y ejecutaría `app.listen` de inmediato: el API podría mostrar «API escuchando» antes de «Conectado a MongoDB» y aceptar peticiones que todavía no puede atender, porque `obtenerDb()` lanzaría «La base de datos todavía no está conectada». Además, si la conexión fallara, el error aparecería cuando el API ya estaba encendido, en lugar de impedir el arranque.
+
+**3. En el experimento 6.1, ¿por qué no apareció «API escuchando»?**
+
+Porque `await cliente.connect()` falló: Atlas rechazó la contraseña con `MongoServerError: bad auth : authentication failed`. El error se lanzó dentro de `await conectar()` y detuvo la ejecución de `index.js` en esa línea, así que `app.listen` nunca se ejecutó. En su lugar, `--watch` mostró «Failed running 'src/index.js'. Waiting for file changes before restarting...».
+
+**4. ¿Qué comprueba el mensaje «Conectado a MongoDB» y qué no comprueba?**
+
+Comprueba que la cadena de conexión está bien escrita, que la dirección del clúster existe, que la red tiene permiso para entrar (Network Access) y que el usuario y la contraseña son correctos (Database Access). No comprueba que la base indicada en `DB_NAME` exista ni que tenga las colecciones: `cliente.db(nombre)` solo elige la base, y MongoDB la crea en silencio la primera vez que se guarda algo en ella. Con un nombre mal escrito, como `maratn`, el mensaje aparecería igual y después todas las consultas devolverían listas vacías. Por eso el nombre se revisa en el panel de MongoDB (Actividad 5).
+
+**5. ¿Qué controla Database Access y qué controla Network Access?**
+
+Database Access controla **quién** se conecta: los usuarios de la base de datos y sus contraseñas. Network Access controla **desde dónde** se permite la conexión: la lista de direcciones IP autorizadas. Para que el API entre se necesitan las dos cosas: credenciales válidas y una IP permitida.
+
+**6. ¿Para qué servirá `obtenerDb()` en la siguiente etapa?**
+
+Para que los repositorios, como `miembros.repository.js`, reciban la base `maraton` ya conectada y puedan consultar sus colecciones, por ejemplo con `obtenerDb().collection('miembros')`, sin crear otra conexión. Si se llamara antes de conectar, lanzaría un error claro en lugar de fallar más adelante de forma confusa.
+
+### Comprobaciones de las actividades
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| `npm run dev` (Actividad 4) | Después de unos segundos de silencio, que es el tiempo de la conexión, aparecen `Conectado a MongoDB: maraton` y luego `API escuchando en http://localhost:3000`, en ese orden. |
+| Peticiones de `requests.http` | Responden igual que en la etapa anterior (404, 404 y 400): la base está conectada, pero todavía no hay rutas que la usen. |
+| Reinicio con `--watch` | Al agregar un espacio en un comentario de `src/app.js` y guardar, el API se reinicia solo: vuelve a conectarse y a escuchar. |
+| Nombre de la base (Actividad 5) | En el panel de MongoDB de VS Code aparece la base `maraton` con las colecciones `miembros` y `series`, y su nombre coincide letra por letra con el que muestra la terminal. |
+
+### Actividad 6: cuando la conexión falla
+Ver Evidencia3 en /docs/capturas como ejemplo del error.
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 6.1 Contraseña incorrecta | Una letra de la contraseña dentro de `MONGODB_URI`. | `MongoServerError: bad auth : authentication failed` y luego «Failed running 'src/index.js'. Waiting for file changes before restarting...». No apareció «API escuchando», porque `await conectar()` falló y `app.listen` nunca se ejecutó. |
+| 6.2 Dirección del clúster incorrecta | Con la contraseña ya restaurada, una letra de la dirección del clúster (por ejemplo, `cluster0.abcde` por `cluster0.zzzzz`). | `Error: querySrv ENOTFOUND _mongodb._tcp.cluster0.zzzzz.mongodb.net` y otra vez «Failed running...». `ENOTFOUND` significa que el driver buscó en internet los servidores de esa dirección y no existen. |
+
+Al restaurar la `MONGODB_URI` original y ejecutar `npm run dev`, volvieron a aparecer `Conectado a MongoDB: maraton` y `API escuchando en http://localhost:3000`. Ver Evidencia4 en /docs/capturas.
+
+
+---
