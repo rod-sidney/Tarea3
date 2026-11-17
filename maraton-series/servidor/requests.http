@@ -13,4 +13,7 @@ GET {{api}}
 POST {{api}}/series
 Content-Type: application/json
  
-{ "titulo":
+{ "titulo": }
+
+### 4. Una ruta que sí existe  →  200
+GET {{api}}/miembros

@@ -299,5 +299,83 @@ Ver Evidencia3 en /docs/capturas como ejemplo del error.
 
 Al restaurar la `MONGODB_URI` original y ejecutar `npm run dev`, volvieron a aparecer `Conectado a MongoDB: maraton` y `API escuchando en http://localhost:3000`. Ver Evidencia4 en /docs/capturas.
 
+### Actividad 7: experimentos «el síntoma dice la capa»
+
+Ver Evidencia 6 y 7 en /docs/capturas.
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 7.1 Olvidar `toArray()` en el repositorio | Se borró `.toArray()` en `miembros.repository.js`. | La petición 4 respondió `500 Internal Server Error` con `{ "error": { "codigo": "ERROR_INTERNO", "mensaje": "Ocurrió un error inesperado." } }`, y en la terminal del servidor apareció `TypeError: Converting circular structure to JSON`. El repositorio devolvió el cursor y no los documentos. |
+| 7.2 Olvidar `await` en el controlador | Se borró `await` en `miembros.controller.js`. | La petición 4 respondió `200 OK` con el cuerpo `{}`: se envió la promesa sin esperar la lista. |
+
+Después de cada experimento se restauró el código y la petición 4 volvió a responder 200 con los cuatro miembros.
+
+---
+
+## 10. El primer módulo: miembros
+
+### Actividad 8: explique el recorrido
+
+Recorrido de la petición `GET /api/miembros`, de ida y de vuelta:
+
+| # | Pieza | Qué hace con esta petición |
+|---:|---|---|
+| 1 | `app.js` · `app.use('/api/miembros', …)` | La petición pasa primero por `cors` y `express.json()` (no trae cuerpo). Como su dirección empieza con `/api/miembros`, `app.js` la entrega al router de miembros; dentro del router, la dirección que queda es `/`. |
+| 2 | `miembros.routes.js` | El router busca una ruta que coincida con el método GET y la dirección `/`. Encuentra `miembrosRouter.get('/', controlador.listar)` y ejecuta `controlador.listar(req, res)`. |
+| 3 | `miembros.controller.js` | `listar(req, res)` no usa `req`, porque la petición no trae datos. Llama a `servicio.listar()` y espera con `await` a que llegue la lista. |
+| 4 | `miembros.service.js` | Para listar no hay reglas, así que solo llama a `repositorio.listar()` y devuelve lo que este le entregue. |
+| 5 | `miembros.repository.js` | Pide la colección con `obtenerDb().collection('miembros')` y arma la consulta: `find({}, { projection: { nombre: 1 } })` para traer todos los documentos solo con `_id` y `nombre`, `.sort({ nombre: 1 })` para ordenarlos y `.toArray()` para leer el cursor completo. |
+| 6 | MongoDB | Atlas ejecuta la consulta en la base `maraton` y devuelve los cuatro miembros, solo con `_id` y `nombre`, ordenados de la A a la Z. |
+| 7 | De vuelta: `miembros.controller.js` | El arreglo sube del repositorio al servicio y del servicio al controlador. `res.json(miembros)` lo convierte en JSON (los `ObjectId` se vuelven texto) y lo envía con el código por defecto, 200 OK, junto con el encabezado `Access-Control-Allow-Origin` que agregó `cors`. |
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Qué pregunta responde cada una de las cuatro capas?**
+
+- `routes`: ¿qué función atiende esta dirección y este método? En miembros, `GET /` lo atiende `listar`.
+- `controller`: ¿qué pidió el cliente y qué se le responde? Pide la lista al servicio y responde 200 con ella.
+- `service`: ¿qué dicen las reglas? Para listar miembros no hay reglas, así que solo pasa el pedido.
+- `repository`: ¿cómo se lee o se guarda en la base? Hace el `find` en la colección `miembros`.
+
+**2. ¿Por qué existe el servicio si para listar no hay reglas?**
+
+Porque cada capa solo llama a la de abajo: el controlador nunca habla directamente con el repositorio. Si más adelante aparece una regla, por ejemplo listar solo los miembros activos, se agrega en el servicio sin tocar el controlador ni el repositorio. Además, otros módulos, como series, usarán el servicio de miembros para hacerle preguntas sobre los miembros.
+
+**3. ¿Por qué en el router la ruta es `'/'` y no `'/api/miembros'`?**
+
+Porque las direcciones del router son relativas al lugar donde se monta. `app.js` monta el router con el prefijo `/api/miembros`, y la dirección completa es el prefijo más la ruta del router: `/api/miembros` + `/`. Si en el router se escribiera `'/miembros'`, la dirección completa quedaría `/api/miembros/miembros`.
+
+**4. ¿Qué es un cursor y qué pasó en el experimento 7.1?**
+
+Un cursor es el objeto que devuelve `find`: todavía no contiene los documentos, sino que sabe ir leyendo los resultados de la consulta. `toArray()` los lee todos y los entrega como arreglo. En el experimento 7.1, al borrar `.toArray()`, el repositorio devolvió el cursor en lugar de los documentos; `res.json` no pudo convertir ese objeto en JSON y lanzó `TypeError: Converting circular structure to JSON`. Como fue un error inesperado, `manejarErrores` respondió 500 con el código `ERROR_INTERNO` y dejó el detalle técnico solo en la terminal.
+
+**5. ¿Por qué el experimento 7.2 respondió 200 si estaba mal?**
+
+Porque sin `await` el controlador no esperó la lista: `servicio.listar()` devolvió una promesa, un resultado que llegará después, y eso fue lo que se le pasó a `res.json`. Una promesa convertida en JSON es `{}`. Como no se lanzó ningún error, `res.json` respondió con su código por defecto, 200 OK. Es un error engañoso: el código indica que todo salió bien, pero la respuesta está vacía.
+
+**6. ¿Por qué `POST /api/miembros` responde 404 si la dirección es la misma que la del GET?**
+
+Porque una ruta se identifica por el método y la dirección juntos. El router de miembros solo registró `GET /`; no tiene ninguna función para `POST /`. Como ninguna ruta atendió la petición, Express siguió hasta `rutaNoEncontrada`, que respondió 404 con el mensaje «No existe POST /api/miembros».
+
+### Comprobaciones de las actividades
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| `npm run dev` | `Conectado a MongoDB: maraton` y `API escuchando en http://localhost:3000`. |
+| Petición 4: `GET /api/miembros` | 200 OK con los cuatro miembros (Ana, Diego, Luis y Sofía), cada uno solo con `_id` y `nombre`, ordenados por nombre. Los `_id` llegan como texto porque JSON no tiene el tipo `ObjectId`. |
+| Petición 1: `GET /api/series` | Sigue respondiendo 404, porque el módulo series todavía no existe. |
+| `POST /api/miembros` | 404 «No existe POST /api/miembros»: la dirección existe, pero el router solo tiene GET. |
+| `http://localhost:3000/api/miembros` en el navegador | Muestra el mismo JSON de la petición 4. |
+
+### Actividad 7: experimentos "el síntoma dice la capa"
+
+Ver Evidencias 6 y 7.
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 7.1 Olvidar `toArray()` en el repositorio | Se borró `.toArray()` en `miembros.repository.js`. | La petición 4 respondió `500 Internal Server Error` con `{ "error": { "codigo": "ERROR_INTERNO", "mensaje": "Ocurrió un error inesperado." } }`, y en la terminal del servidor apareció `TypeError: Converting circular structure to JSON`. El repositorio devolvió el cursor y no los documentos. |
+| 7.2 Olvidar `await` en el controlador | Se borró `await` en `miembros.controller.js`. | La petición 4 respondió `200 OK` con el cuerpo `{}`: se envió la promesa sin esperar la lista. |
+
+Después de cada experimento se restauró el código y la petición 4 volvió a responder 200 con los cuatro miembros.
 
 ---

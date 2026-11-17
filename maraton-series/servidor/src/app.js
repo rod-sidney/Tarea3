@@ -4,6 +4,7 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from './config/env.js'
+import { miembrosRouter } from './miembros/miembros.routes.js'
 import { rutaNoEncontrada, manejarErrores } from './middlewares/errores.js'
 
 export const app = express()
@@ -12,6 +13,8 @@ app.use(cors({ origin: config.origenCliente })) // solo el cliente React puede l
 
 app.use(express.json()) // convierte el cuerpo JSON en req.body
 
-// Aquí se montarán las rutas de cada módulo (miembros, series)
+app.use('/api/miembros', miembrosRouter)
+
 app.use(rutaNoEncontrada) // si ninguna ruta respondió
+
 app.use(manejarErrores) // siempre el último
