@@ -377,3 +377,5 @@ El archivo `docs/laboratorios.md` tiene una sección por laboratorio con la capt
 | # | Fecha | Hash | Mensaje | Zona | Cambio |
 |---|---|---|---|---|---|
 | 1 | 2026-11-16 | 5525e61 | Creación del repositorio, README.md inicial, docs iniciales | Carpetas | Agregar laboratorios completados |
+| 2 | 2026-11-16 | 79fdeda | Completar laboratorio -Conectar el API con MongoDB-, y respectiva documentación | /docs, /maraton-series/servidor | README.md, laboratorios.md, index.js |
+| 3 | 2026-11-17 | 53a7b5a | Completar laboratorio -El primer módulo: miembros- | /docs, /maraton-series/servidor, /mongo, /miembros | laboratorios.md, 02-modelo..mongodb.js, requests.http, app.js, miembros.controller.js, miembros.repository.js, miembros.routes.js, miembros.service.js |

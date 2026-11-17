@@ -17,3 +17,40 @@ Content-Type: application/json
 
 ### 4. Una ruta que sí existe  →  200
 GET {{api}}/miembros
+
+### 5. Listar series → 200
+GET {{api}}/series
+
+### 6. Crear una serie → 201
+# Reemplace el miembroId por el _id de Sofía (petición 4)
+POST {{api}}/series
+Content-Type: application/json
+
+{
+"titulo": "Severance",
+"genero": "Drama",
+"temporadas": 2,
+"miembroId": "6afccebf008cde344d403970"
+}
+
+### 7. Datos inválidos → 400 con un mensaje por campo
+POST {{api}}/series
+Content-Type: application/json
+
+{
+"titulo": "S",
+"genero": "Terror",
+"temporadas": "dos",
+"miembroId": "123"
+}
+
+### 8. Un miembro que no existe → 400
+POST {{api}}/series
+Content-Type: application/json
+
+{
+"titulo": "Fargo",
+"genero": "Drama",
+"temporadas": 5,
+"miembroId": "650000000000000000000000"
+}

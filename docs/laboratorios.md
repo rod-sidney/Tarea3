@@ -379,3 +379,68 @@ Ver Evidencias 6 y 7.
 Después de cada experimento se restauró el código y la petición 4 volvió a responder 200 con los cuatro miembros.
 
 ---
+
+## 11. Series: listar y crear
+
+### Actividad 9: explique el recorrido del POST
+
+Recorrido de la petición 6 (`POST /api/series` con Severance), en orden:
+
+| # | Pieza | Qué hace con esta petición |
+|---:|---|---|
+| 1 | `express.json()` | Después de que `cors` agrega su encabezado, lee el cuerpo de la petición (que trae `Content-Type: application/json`), convierte el texto JSON en un objeto y lo deja en `req.body`: `{ titulo: 'Severance', genero: 'Drama', temporadas: 2, miembroId: '…' }`. Como la dirección empieza con `/api/series`, `app.js` pasa la petición al router de series. |
+| 2 | `series.routes.js` | El router busca la ruta que corresponde al método POST en `/` y ejecuta `controlador.crear`. Con la misma dirección, un GET habría ido a `listar`. |
+| 3 | `series.controller.js` · `crear` | Llama a `servicio.crear(req.body ?? {})` con el cuerpo de la petición y espera el resultado con `await`. No tiene `try/catch`: si el servicio lanza un error, Express 5 lo envía a `manejarErrores`. |
+| 4 | `series.validacion.js` | El servicio llama a `validarSerie(datos)`, que revisa que el título sea texto de al menos 2 caracteres, que el género esté en `GENEROS`, que `temporadas` sea un entero de 1 a 30 y que `miembroId` tenga formato de `ObjectId`. Severance cumple todo, así que devuelve `{}` y el servicio continúa. |
+| 5 | `miembros.service.js` · `existe` | El servicio de series le pregunta al de miembros si el `miembroId` corresponde a alguien. `existe` llama a `repositorio.buscarPorId(id)`, que hace un `findOne` convirtiendo el id con `new ObjectId(id)`. Como Sofía existe, devuelve `true`. |
+| 6 | `series.service.js` · `repositorio.crear` | El servicio arma el documento campo por campo: el título sin espacios en los extremos, el género, las temporadas, `estado: 'Por ver'`, el `miembroId` convertido con `new ObjectId(…)` y `calificaciones: []`. `repositorio.crear` lo inserta con `insertOne`; MongoDB lo revisa con el `$jsonSchema`, le genera un `_id` y el repositorio devuelve ese `insertedId`. |
+| 7 | `series.repository.js` · `buscarPorId` | Con el `_id` nuevo, el servicio lee la serie recién creada: `aggregate` filtra con `$match` por ese `_id` y aplica las etapas de `CON_MIEMBRO`, de modo que la serie vuelve con `miembro: 'Sofía'` y sin `calificaciones`. Se toma el primer elemento del arreglo. |
+| 8 | `series.controller.js` · `res.status(201)` | La serie sube al controlador, que responde `201 Created` con ella en JSON: `_id`, `titulo`, `genero`, `temporadas`, `estado: "Por ver"`, `miembroId` y `miembro: "Sofía"`. |
+
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Por qué series pregunta a `miembros.service` y no a `miembros.repository`?**
+
+Porque cada módulo es dueño de su colección: solo el módulo miembros sabe cómo se consulta la colección `miembros` y qué reglas tiene. Si series usara directamente el repositorio de miembros, se saltaría las reglas de su servicio y quedaría atado a la forma en que se guardan esos datos, de modo que un cambio en ese repositorio podría romper series. Al preguntarle al servicio con `existe`, series solo depende de una respuesta de sí o no.
+
+**2. ¿Por qué se valida en el servidor si el formulario de React también valida?**
+
+Porque la validación de React se puede saltar: cualquiera puede enviar peticiones directamente al API con REST Client, la consola del navegador u otra herramienta. El servidor es quien protege los datos. Además, al validar antes de guardar, el API responde 400 con un mensaje claro por campo, en lugar de que el `$jsonSchema` de MongoDB rechace el documento y termine en un 500. La validación de React sirve para avisarle de inmediato a la persona usuaria; la del servidor es la que garantiza las reglas.
+
+**3. ¿Qué pasaría si el servicio guardara `req.body` tal cual con `insertOne(datos)`? Use el resultado del paso 7 de la Tarea 7.**
+
+El cliente decidiría lo que entra a la base. En el paso 7 se agregaron `"estado": "Vista"` y `"admin": true` al cuerpo, y la serie se creó de todos modos con estado «Por ver» y sin `admin`, porque el servicio arma el documento campo por campo. Con `insertOne(datos)` esos dos campos llegarían a la base: el cliente elegiría el estado inicial y podría guardar campos que no forman parte del modelo. También se perderían las conversiones del servicio: `miembroId` quedaría como texto en lugar de `ObjectId` (el `$jsonSchema` lo rechazaría con un 500 y, aunque lo aceptara, el `$lookup` no encontraría al miembro), el título no se recortaría y no se agregaría `calificaciones: []`.
+
+**4. ¿Por qué se convierte `miembroId` con `new ObjectId(…)` antes de guardar?**
+
+Porque el id llega del cliente como texto, ya que JSON no tiene el tipo `ObjectId`, pero en la base los `_id` de los miembros son `ObjectId`. El `$jsonSchema` de la colección `series` exige que `miembroId` sea un `ObjectId`, y el `$lookup` compara `miembroId` con el `_id` de `miembros`: un texto nunca sería igual a un `ObjectId`, así que no encontraría al miembro.
+
+**5. ¿Qué hace cada etapa de `CON_MIEMBRO`? ¿Qué demostró el experimento de la Actividad 8?**
+
+- `$lookup` busca en la colección `miembros` los documentos cuyo `_id` es igual al `miembroId` de la serie y los deja en un arreglo llamado `miembro`.
+- `$unwind` saca al miembro del arreglo, de `[ {…} ]` a `{…}`; si el arreglo está vacío, descarta la serie.
+- `$set` reemplaza el objeto `miembro` por solo su nombre, por ejemplo `miembro: 'Ana'`.
+- `$project` quita `calificaciones`, que la pantalla no usa.
+
+MongoDB no avisa cuando el nombre de una colección está mal escrito. Con `from: 'miembro'`, `$lookup` busca en una colección que no existe y dejó el arreglo vacío en todas las series; después `$unwind` las descartó todas y la respuesta fue un 200 con `[]`.
+
+**6. ¿Por qué `crear` responde 201 y con la serie leída de la base, y no con los datos que llegaron?**
+
+201 Created es el código que indica que se creó un recurso nuevo. Se responde con la serie leída de la base porque es la versión que realmente quedó guardada: trae el `_id` que generó MongoDB, el estado «Por ver» que asignó el servidor y el nombre del miembro que agregó el `$lookup`, y no trae los campos de más que haya enviado el cliente. Así React recibe la serie lista para mostrarla.
+
+### Comprobaciones de las actividades
+
+Ver Evidencias 8, 9, 10.
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| Petición 5: `GET /api/series` | 200 con las cinco series, cada una con el nombre de su miembro (Ana, Luis, Sofía, Diego y Ana). |
+| Petición 6: crear Severance | `201 Created` con Severance, `estado: "Por ver"` y `miembro: "Sofía"`. Al enviar otra vez la petición 5 aparecen seis series. |
+| Petición 7: datos inválidos | `400 Bad Request` con `DATOS_INVALIDOS` y los cuatro mensajes en `detalles`: título, género, temporadas y `miembroId`. |
+| Petición 8: miembro que no existe | 400 con `detalles.miembroId`: «Ese miembro no existe.». |
+| Petición 6 con `"temporadas": "2"` | 400 en `temporadas`: el texto `"2"` no es un número entero. |
+| Petición 6 con `"estado": "Vista"` y `"admin": true` | La serie se crea con estado «Por ver» y sin el campo `admin`. |
+| Colección `series` en el panel de MongoDB | Severance tiene `miembroId` guardado como `ObjectId` y `calificaciones: []`. |
+
+---
