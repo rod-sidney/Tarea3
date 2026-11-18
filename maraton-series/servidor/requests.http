@@ -57,13 +57,13 @@ Content-Type: application/json
 
 ### 9. Cambiar el estado de una serie → 200
 # Reemplace el id por el _id de Severance (respuesta de la petición 6)
-PATCH {{api}}/series/6afccebf008cde344d403972/estado
+PATCH {{api}}/series/6afd186957df91318da7c2fa/estado
 Content-Type: application/json
 
 { "estado": "Viendo" }
 
 ### 10. Un estado que no existe → 400
-PATCH {{api}}/series/6afccebf008cde344d403972/estado
+PATCH {{api}}/series/6afd186957df91318da7c2fa/estado
 Content-Type: application/json
 
 { "estado": "Abandonada" }
@@ -81,7 +81,7 @@ Content-Type: application/json
 { "estado": "Vista" }
 
 ### 13. Eliminar una serie → 204
-DELETE {{api}}/series/6afccebf008cde344d403972
+DELETE {{api}}/series/6afd186957df91318da7c2fa
 
 ### 14. Eliminarla otra vez → 404
-DELETE {{api}}/series/6afccebf008cde344d403972
+DELETE {{api}}/series/6afd186957df91318da7c2fa

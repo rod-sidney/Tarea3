@@ -16,10 +16,10 @@ function TarjetaSerie({ serie, onAvanzar, onQuitar }) {
           {serie.genero} · {serie.temporadas} {serie.temporadas === 1 ? 'temporada' : 'temporadas'} · propuesta por {serie.miembro}
         </p>
         <div className="mt-auto d-flex gap-2">
-          <button className="btn btn-sm btn-primary" onClick={() => onAvanzar(serie.id)}>
+          <button className="btn btn-sm btn-primary" onClick={() => onAvanzar(serie._id)}>
             Cambiar estado
           </button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => onQuitar(serie.id)}>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => onQuitar(serie._id)}>
             Quitar
           </button>
         </div>

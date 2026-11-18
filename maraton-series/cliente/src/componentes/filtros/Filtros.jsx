@@ -2,9 +2,10 @@
 // Dos listas desplegables: por estado y por quién propuso la serie.
 // No tiene estado propio: recibe el valor elegido y una función para cambiarlo. 
 
-import { ESTADOS, MIEMBROS } from '../../data/series.js'
+import { ESTADOS } from '../../data/series.js'
 
-function Filtros({ estado, miembro, onCambiarEstado, onCambiarMiembro }) {
+function Filtros({ miembros, estado, miembro, onCambiarEstado, onCambiarMiembro
+}) {
     return (
         <div className="row g-3">
             <div className="col-sm-6">
@@ -26,8 +27,15 @@ function Filtros({ estado, miembro, onCambiarEstado, onCambiarMiembro }) {
                 <select
                     id="filtro-miembro"
                     className="form-select"
-                    value={miembro} onChange={(event) => onCambiarMiembro(event.target.value)}
-                > <option value="Todos">Todos</option> {MIEMBROS.map((opcion) => (<option key={opcion} value={opcion}>{opcion}</option>))}
+                    value={miembro}
+                    onChange={(event) => onCambiarMiembro(event.target.value)}
+                >
+                    <option value="Todos">Todos</option>
+                    {miembros.map((opcion) => (
+                        <option key={opcion._id} value={opcion.nombre}>
+                            {opcion.nombre}
+                        </option>
+                    ))}
                 </select>
             </div>
         </div>

@@ -521,3 +521,61 @@ Como `GET /api/series` existe desde la etapa 5, la petición 1 se cambió a `GET
 | 8.3 Sin `.end()` | Se cambió `res.status(204).end()` por `res.status(204)` y se envió la petición 13. | REST Client se quedó esperando sin mostrar respuesta y hubo que cancelar la petición. Aun así, la petición 5 mostró que la serie sí se borró: el servidor hizo su trabajo, pero no avisó. |
 
 ---
+
+## 13. React lee el API
+
+### Actividad 10: explique el recorrido
+
+Recorrido desde que se abre `http://localhost:5173` hasta que aparecen las tarjetas:
+
+| # | Pieza | Qué hace |
+|---:|---|---|
+| 1 | `App` · primer dibujo | React ejecuta `App` con los estados iniciales: `series` y `miembros` vacíos, `cargando` en `true` y `error` vacío. Como `cargando` es `true`, `App` devuelve solo `<Pagina>` con el indicador que gira y «Cargando series…»; no dibuja filtros ni tarjetas. |
+| 2 | `useEffect` · `cargar()` | Después del primer dibujo, React ejecuta el efecto; por el `[]` final, solo esta vez. El efecto llama a `cargar()`, que con `Promise.all` envía a la vez `obtenerSeries()` y `obtenerMiembros()` y espera a que lleguen las dos. |
+| 3 | `seriesApi.js` · `obtenerSeries` → `pedir` | `obtenerSeries()` llama a `pedir('/series')`, que une `URL_API` (leída de `import.meta.env.VITE_API_URL`) con la ruta, `http://localhost:3000/api/series`, y hace `await fetch(…)`. El navegador envía el GET con el origen `http://localhost:5173`. |
+| 4 | API · `GET /api/series` | Express recibe la petición: `cors` autoriza el origen 5173, el router de series ejecuta `listar` y el servicio y el repositorio consultan MongoDB con el `$lookup`. El API responde 200 con el arreglo de series en JSON, cada una con su `_id` y el nombre de su miembro. Al mismo tiempo, `GET /api/miembros` responde con los miembros. |
+| 5 | `seriesApi.js` · `respuesta.json()` | `pedir` lee el cuerpo con `await respuesta.json()` y lo convierte en un arreglo. Como `respuesta.ok` es `true`, lo devuelve. Lo mismo ocurre con la petición de los miembros. |
+| 6 | `App` · `setSeries` y `setMiembros` | Cuando llegan las dos listas, `Promise.all` entrega `[listaSeries, listaMiembros]` y `cargar` guarda cada una en su estado. |
+| 7 | `App` · `finally` | Con éxito o con error, `finally` ejecuta `setCargando(false)`: la carga terminó. |
+| 8 | `App` · segundo dibujo | Los cambios de estado hacen que React vuelva a dibujar `App`. Ahora `cargando` es `false`, así que dibuja la página normal: los filtros con los miembros del API, las tarjetas de las series de MongoDB, con `_id` como `key`, y el resumen con los conteos. |
+
+**Experimento 9.1 (servidor apagado):** cambia la fila 3. `fetch` no recibe ninguna respuesta (`net::ERR_CONNECTION_REFUSED`), así que lanza un error que `pedir` cambia por «No se pudo conectar con el API. ¿Está encendido el servidor?». Las filas 4 y 5 no ocurren, y en lugar de la fila 6 se ejecuta `catch (err) { setError(err.message) }`. En el segundo dibujo la página muestra la alerta roja con ese mensaje, sin tarjetas («Ninguna serie coincide con los filtros.») y con el resumen en cero.
+
+**Experimento 9.3 (variable sin `VITE_`):** cambia la fila 3. `URL_API` vale `undefined`, así que la dirección queda `undefined/series`; como no empieza con `http`, el navegador la pide al mismo Vite (`http://localhost:5173/undefined/series`), que responde con el HTML de la página en lugar del API. Entonces falla la fila 5: `respuesta.json()` intenta leer ese HTML como JSON y lanza un error en el primer carácter, `<`. La página muestra la alerta roja con `Unexpected token '<', "<!doctype "... is not valid JSON` y ninguna serie.
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Por qué la dirección del API va en un `.env` y no escrita en `seriesApi.js`?**
+
+Porque la dirección depende del lugar donde se ejecute la aplicación: en desarrollo es `http://localhost:3000/api`, pero al publicarla será otra. Con el `.env` se cambia la configuración sin tocar el código, y quien clone el proyecto sabe qué variable preparar gracias a `.env.example`. Además, la dirección queda definida en un solo lugar.
+
+**2. ¿Por qué no se pueden poner secretos en una variable `VITE_`?**
+
+Porque Vite coloca el valor de las variables `VITE_` dentro del JavaScript que descarga el navegador. Cualquier persona que abra la página puede verlo en las herramientas del navegador o en el código descargado. Por eso en el `.env` del cliente solo va información pública, como la dirección del API; los secretos, como la cadena de conexión de MongoDB, se quedan en el `.env` del servidor.
+
+**3. ¿Qué diferencia hay entre el error del experimento 9.1 y el del 9.2, si la página muestra el mismo mensaje? ¿Dónde se nota?**
+
+En el 9.1 el API estaba apagado: la petición no recibió ninguna respuesta. En el 9.2 el API sí respondió, pero solo autoriza el origen `http://localhost:5173` (`CLIENT_ORIGIN`); como React corría en el 5174, el navegador no dejó que React leyera la respuesta. En los dos casos `fetch` falla sin una respuesta que se pueda usar, y `pedir` muestra el mismo mensaje. La diferencia se nota en la consola del navegador: en el 9.1 aparece `net::ERR_CONNECTION_REFUSED`, y en el 9.2 el aviso de que la petición fue bloqueada por la política de CORS porque el encabezado `Access-Control-Allow-Origin` tiene el valor `http://localhost:5173`, distinto del origen que hizo la petición.
+
+**4. ¿Por qué la petición va dentro de `useEffect`? ¿Qué demostró el experimento 9.4?**
+
+Porque el cuerpo del componente se ejecuta cada vez que se dibuja. Si la petición estuviera ahí, al llegar los datos cambiaría el estado, `App` se dibujaría de nuevo y volvería a pedir, sin fin. `useEffect` ejecuta la función después de dibujar y, con `[]`, solo la primera vez. El experimento 9.4 lo demostró: sin `[]`, el efecto se ejecutó después de cada dibujo y la pestaña Red se llenó de cientos de peticiones en pocos segundos, porque cada respuesta cambiaba el estado, eso provocaba otro dibujo y el efecto pedía otra vez.
+
+**5. ¿Por qué `setCargando(false)` va en `finally`?**
+
+Porque la carga termina tanto si las peticiones salen bien como si fallan, y `finally` se ejecuta en los dos casos. Si estuviera dentro del `try`, cuando hay un error nunca se ejecutaría: la página se quedaría para siempre en «Cargando series…» y no mostraría la alerta.
+
+**6. Al agregar una serie y recargar, la serie desaparece. ¿Qué tendría que hacer `agregar` para que no pase?**
+
+Hoy `agregar` solo cambia el estado de React, que vive en la memoria del navegador; al recargar, `App` vuelve a pedir las series a MongoDB, donde esa serie nunca se guardó. Para que no pase, `agregar` tendría que enviar los datos al API con un `POST /api/series` mediante una función de `seriesApi.js`, esperar la respuesta y agregar al estado la serie que devuelve el API, ya guardada en MongoDB y con su `_id` real.
+
+### Actividad 9: cuatro experimentos
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 9.1 El servidor apagado | Se detuvo el API con Ctrl + C y se recargó el Maratón. | La página mostró «No se pudo conectar con el API. ¿Está encendido el servidor?» y la consola, `Failed to load resource: net::ERR_CONNECTION_REFUSED`. |
+| 9.2 CORS: React en otro puerto | Se abrió un segundo Vite con `npm run dev -- --port 5174` y se entró a `http://localhost:5174`. | La página mostró el mismo mensaje de conexión, pero la consola indicó que el acceso a `http://localhost:3000/api/series` desde el origen `http://localhost:5174` fue bloqueado por la política de CORS, porque el API solo autoriza `http://localhost:5173`. |
+| 9.3 Una variable sin `VITE_` | En `cliente/.env` se cambió `VITE_API_URL` por `API_URL`. | La página mostró `Unexpected token '<', "<!doctype "... is not valid JSON`, y en la pestaña Red la petición fue a `http://localhost:5173/undefined/series`. |
+| 9.4 `useEffect` sin `[]` | Se borró el `[]` del final de `useEffect`. | La lista de peticiones en la pestaña Red creció sin parar, cientos en pocos segundos, hasta que se restauró `}, [])`. |
+
+---

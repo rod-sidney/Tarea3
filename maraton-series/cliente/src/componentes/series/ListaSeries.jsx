@@ -15,7 +15,7 @@ function ListaSeries({ series, onAvanzar, onQuitar }) {
   return (
     <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
       {series.map((serie) => (
-        <div className="col" key={serie.id}>
+        <div className="col" key={serie._id}>
           <TarjetaSerie serie={serie} onAvanzar={onAvanzar} onQuitar={onQuitar} />
         </div>
       ))}

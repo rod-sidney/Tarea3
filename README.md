@@ -380,4 +380,4 @@ El archivo `docs/laboratorios.md` tiene una sección por laboratorio con la capt
 | 2 | 2026-11-16 | 79fdeda | Completar laboratorio -Conectar el API con MongoDB-, y respectiva documentación | /docs, /maraton-series/servidor | README.md, laboratorios.md, index.js |
 | 3 | 2026-11-17 | 53a7b5a | Completar laboratorio -El primer módulo: miembros- | /docs, /maraton-series/servidor, /mongo, /miembros | laboratorios.md, 02-modelo..mongodb.js, requests.http, app.js, miembros.controller.js, miembros.repository.js, miembros.routes.js, miembros.service.js |
 | 4 | 2026-11-17 | d3144ad | Completar laboratorio -Series: listar y crear- | README.md, /docs, maraton-series/servidor, /miembros, /series | requests.http, app.js, miembros.repository.js, miembros.service.js, series.controller.js, series.repository.js, series.routes.js, series.service.js, series.validacion.js |
-
+| 5 | 2026-11-17 | d76aa02 | Completar laboratorio -Series: estado y eliminar- | /docs, /maraton-series/servidor, /series, /utils | README.md, laboratorios.md, requests.http, series.controller.js, series.repository.js, series.routes.js, series.service.js, series.validacion.js, revisarId.js |
