@@ -579,3 +579,75 @@ Hoy `agregar` solo cambia el estado de React, que vive en la memoria del navegad
 | 9.4 `useEffect` sin `[]` | Se borró el `[]` del final de `useEffect`. | La lista de peticiones en la pestaña Red creció sin parar, cientos en pocos segundos, hasta que se restauró `}, [])`. |
 
 ---
+
+## 14. El formulario crea con POST
+
+### Actividad 8: explique el recorrido
+
+Recorrido al agregar Severance · Drama · 2 · Sofía desde el formulario:
+
+| # | Pieza | Qué hace |
+|---:|---|---|
+| 1 | `FormularioSerie` · `validarSerie` | Al presionar «Agregar serie», `enviar` evita la recarga con `event.preventDefault()` y valida en el navegador con `validarSerie(datos)`. Como los cuatro campos están bien, guarda `{}` con `setErrores` y el envío continúa. |
+| 2 | `FormularioSerie` · `setEnviando(true)` | Marca que empezó el envío: el botón se desactiva y dice «Guardando…». Dentro del `try` llama a `await onAgregar(…)` con los datos del formulario, el título recortado y `temporadas` convertido a número con `Number(…)`. |
+| 3 | `App` · `agregar` | `onAgregar` es la función `agregar` de `App`. Llama a `await crearSerie(datos)` y espera la serie guardada. No tiene `try/catch`. |
+| 4 | `seriesApi` · `crearSerie` → `pedir` | `crearSerie` llama a `pedir('/series', 'POST', datos)`. Como hay datos, `pedir` arma las opciones con `method: 'POST'`, el encabezado `Content-Type: application/json` y `body: JSON.stringify(datos)`, y hace el `fetch` a `http://localhost:3000/api/series`. |
+| 5 | API · `POST /api/series` | `express.json()` lee el cuerpo; el servicio valida los datos, comprueba que Sofía existe, arma el documento con estado «Por ver» y `miembroId` como `ObjectId`, lo inserta en MongoDB y lo vuelve a leer con el `$lookup`. Responde 201 con la serie completa. `pedir` lee el cuerpo y, como `respuesta.ok` es `true`, lo devuelve. |
+| 6 | `App` · `setSeries` | `agregar` recibe `creada`, con el `_id` de MongoDB, el estado «Por ver» y `miembro: 'Sofía'`, y la agrega a la lista vigente con `setSeries((actuales) => [...actuales, creada])`. Aparece la tarjeta nueva y el resumen se recalcula. |
+| 7 | `FormularioSerie` · `setDatos(VACIO)` | Como `await onAgregar(…)` terminó sin error, el `try` continúa y el formulario se limpia. |
+| 8 | `FormularioSerie` · `finally` | Ejecuta `setEnviando(false)`: el botón vuelve a estar disponible y dice «Agregar serie». |
+
+**Cuando el API responde 400:** el recorrido se desvía en la fila 5. El API responde 400 `DATOS_INVALIDOS`; `pedir` ve que `respuesta.ok` es `false` y lanza un `Error` con el mensaje general y `error.detalles`, que trae un mensaje por campo. Ese error atraviesa `crearSerie` y `agregar`, que no lo atrapan, así que no se ejecutan la fila 6 (`setSeries`) ni la fila 7 (`setDatos(VACIO)`). Llega al `catch` de `enviar`, que guarda `err.detalles` con `setErrores`, y después la fila 8 vuelve a habilitar el botón. La página muestra cada mensaje del API en rojo debajo de su campo, los datos se quedan en el formulario para corregirlos y no aparece ninguna tarjeta nueva.
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Qué tres piezas necesita `fetch` para enviar datos? ¿Qué demostraron los experimentos 7.2 y 7.3?**
+
+Necesita `method: 'POST'`, el método HTTP (sin esta opción, `fetch` hace GET); `headers: { 'Content-Type': 'application/json' }`, que avisa que el cuerpo es JSON; y `body: JSON.stringify(datos)`, el cuerpo convertido a texto JSON. El experimento 7.2 demostró que sin `Content-Type` el cuerpo viaja como `text/plain;charset=UTF-8`, `express.json` no lo lee, el API recibe un objeto vacío y responde 400 marcando los cuatro campos aunque estén bien. El 7.3 demostró que sin `JSON.stringify`, `fetch` convierte el objeto a texto a su manera, «[object Object]»; el API no puede leerlo como JSON y responde 400 `JSON_INVALIDO`, que el formulario muestra como alerta: «El cuerpo no es un JSON válido.».
+
+**2. ¿Por qué `agregar` llama primero al API y después a `setSeries`?**
+
+Para que la pantalla solo muestre lo que quedó guardado. Si primero se agregara al estado y después el API rechazara los datos o no respondiera, la tarjeta aparecería en pantalla sin existir en la base y desaparecería al recargar. Además, la serie que devuelve el API llega completa: con el `_id` de MongoDB, el estado «Por ver» y el nombre del miembro gracias al `$lookup`; los datos del formulario no traen nada de eso.
+
+**3. ¿Por qué `agregar` no tiene `try/catch`?**
+
+Porque el error tiene que llegar al formulario, que es quien sabe mostrarlo: cada mensaje debajo de su campo o, si no hay detalles, una alerta general. Si `agregar` atrapara el error, el formulario creería que todo salió bien, se limpiaría y la persona no sabría qué corregir.
+
+**4. ¿Por qué el formulario envía el `miembroId` y no el nombre?**
+
+Porque el API relaciona la serie con su miembro mediante el `_id`: revisa que `miembroId` tenga formato de `ObjectId`, comprueba con `miembros.existe` que el miembro esté en la base y lo guarda como `ObjectId` para que el `$lookup` lo encuentre. El nombre no identifica de forma segura a un miembro, porque podría repetirse o cambiar; el `_id` no. La persona ve el nombre en el select, pero el formulario guarda el `_id` en `value={miembro._id}`.
+
+**5. Si el navegador ya valida, ¿por qué el API valida otra vez?**
+
+Porque la validación del navegador se puede saltar, con REST Client o por un error en React, como mostró el experimento 7.1, y el API es quien protege la base: tiene la última palabra. Además, hay reglas que solo el API puede revisar, como si el miembro existe en la base. La validación del navegador sirve para avisar rápido sin enviar nada.
+
+**6. ¿Qué problema mostró el experimento 7.4?**
+
+Que sin `await`, `enviar` no espera a `onAgregar`: limpia el formulario de inmediato y el `try` termina antes de que llegue el error. Con el API apagado, el error quedó sin atrapar y solo apareció en la consola como «Uncaught (in promise) Error: No se pudo conectar con el API. ¿Está encendido el servidor?». La página no mostró la serie ni ningún mensaje, y la persona perdió lo que había escrito sin saber por qué.
+
+### Comprobaciones de las actividades
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| Recargar después de cambiar `pedir` (Actividad 1) | El Maratón se ve igual: los GET siguen funcionando con el método por defecto. |
+| Borrar `MIEMBROS` (Actividad 2) | La página queda en blanco y la consola indica que `data/series.js` no exporta `MIEMBROS`, porque el formulario todavía lo importaba. Se corrigió en la Actividad 5. |
+| Select «Propuesta por» | Muestra Ana, Diego, Luis y Sofía, que vienen del API. |
+| Agregar con el formulario vacío | Aparecen los cuatro mensajes del navegador y en la pestaña Red no sale ninguna petición. |
+| Agregar Severance · Drama · 2 · Sofía | Aparece la tarjeta en «Por ver», «propuesta por Sofía», y el formulario se limpia. |
+| Petición POST en la pestaña Red | En Encabezados, estado 201; en Carga útil, `{"titulo":"Severance","genero":"Drama","temporadas":2,"miembroId":"…"}`; en Respuesta, la serie con su `_id`. |
+| Recargar la página | Severance sigue en el tablero; también aparece con la petición 5 de REST Client. |
+| Agregar con el API detenido | Aparece una alerta arriba del formulario y los datos se quedan. Al encender el API y presionar otra vez, la serie se guarda. |
+| Botón «Guardando…» con una red lenta | Con la limitación de red de la pestaña Red, el botón se desactiva y dice «Guardando…» mientras espera la respuesta. |
+
+### Actividad 7: cuatro experimentos
+
+Se restauró el código después de cada experimento.
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 7.1 Sin la validación del navegador | En `FormularioSerie.jsx` se comentó el `if (Object.keys(nuevosErrores).length > 0) { return }` y se envió el formulario vacío. | En la pestaña Red apareció `series POST 400` y los mensajes ahora venían del API. El del género lo delata: debajo de Género apareció «Elija un género de la lista.», que es el texto del API, no el del navegador («Elija un género.»). |
+| 7.2 Sin `Content-Type` | En `seriesApi.js` se comentó la línea `opciones.headers = …` y se agregó una serie con datos correctos. | Los cuatro campos se marcaron en rojo aunque estaban bien. En Red, el encabezado decía `text/plain;charset=UTF-8`: `express.json` no leyó el cuerpo y el API recibió un objeto vacío. |
+| 7.3 Sin `JSON.stringify` | Se cambió `opciones.body = JSON.stringify(datos)` por `opciones.body = datos`. | El formulario mostró la alerta «El cuerpo no es un JSON válido.» y la Carga útil en Red decía `[object Object]`. El API respondió 400 `JSON_INVALIDO`. |
+| 7.4 Sin `await` | En `FormularioSerie.jsx` se quitó `await` delante de `onAgregar`, se detuvo el API y se agregó una serie. | El formulario se limpió, no apareció la serie ni ningún mensaje, y la consola mostró «Uncaught (in promise) Error: No se pudo conectar con el API. ¿Está encendido el servidor?». |
+
+---

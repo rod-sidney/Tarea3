@@ -3,18 +3,25 @@
 // Los componentes no usan fetch directamente: llaman a estas funciones.
 const URL_API = import.meta.env.VITE_API_URL // viene del archivo .env
 
-// Hace una petición GET y devuelve los datos de la respuesta.
-// Si algo falla, lanza un Error con un mensaje que se puede mostrar en pantalla.
-async function pedir(ruta) {
+// Hace la petición y devuelve los datos de la respuesta.
+// Si el servidor responde con un error, lanza un Error con su mensaje.
+async function pedir(ruta, metodo = 'GET', datos) {
+    const opciones = { method: metodo }
+    if (datos !== undefined) {
+        opciones.headers = { 'Content-Type': 'application/json' }
+        opciones.body = JSON.stringify(datos)
+    }
     let respuesta
     try {
-        respuesta = await fetch(URL_API + ruta)
+        respuesta = await fetch(URL_API + ruta, opciones)
     } catch {
         throw new Error('No se pudo conectar con el API. ¿Está encendido el servidor ? ')
     }
     const cuerpo = await respuesta.json()
     if (!respuesta.ok) {
-        throw new Error(cuerpo.error.mensaje) // el mensaje que armó el API
+        const error = new Error(cuerpo.error.mensaje)
+        error.detalles = cuerpo.error.detalles // 400: un mensaje por campo
+        throw error
     }
     return cuerpo
 }
@@ -25,4 +32,8 @@ export function obtenerSeries() {
 
 export function obtenerMiembros() {
     return pedir('/miembros')
+}
+
+export function crearSerie(datos) {
+    return pedir('/series', 'POST', datos)
 }

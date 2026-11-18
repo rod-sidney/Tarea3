@@ -19,8 +19,8 @@ export function validarSerie(datos) {
     errores.temporadas = 'Indique un número entero entre 1 y 30.'
   }
 
-  if (datos.miembro === '') {
-    errores.miembro = 'Indique quién propone la serie.'
+  if (datos.miembroId === '') {
+    errores.miembroId = 'Indique quién propone la serie.'
   }
 
   return errores

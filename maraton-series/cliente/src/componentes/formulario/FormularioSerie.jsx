@@ -1,18 +1,18 @@
 // FormularioSerie.jsx
 // Formulario CONTROLADO para agregar una serie.
-// Cada campo muestra el valor del estado y onChange lo actualiza.
-// Al enviar, valida y muestra el error junto a cada campo.
+// Valida antes de enviar; si el API rechaza los datos, muestra sus mensajes por campo.
 // No sabe dónde se guarda la serie: se la entrega a App con onAgregar.
 
 import { useState } from 'react'
-import { GENEROS, MIEMBROS } from '../../data/series.js'
+import { GENEROS } from '../../data/series.js'
 import { validarSerie } from '../../utils/validarSerie.js'
 
-const VACIO = { titulo: '', genero: '', temporadas: '', miembro: '' }
+const VACIO = { titulo: '', genero: '', temporadas: '', miembroId: '' }
 
-function FormularioSerie({ onAgregar }) {
+function FormularioSerie({ miembros, onAgregar }) {
     const [datos, setDatos] = useState(VACIO)
     const [errores, setErrores] = useState({})
+    const [enviando, setEnviando] = useState(false)
 
     // Un solo manejador para todos los campos: usa el atributo name
     function cambiar(event) {
@@ -20,34 +20,47 @@ function FormularioSerie({ onAgregar }) {
         setDatos({ ...datos, [name]: value })
     }
 
-    function enviar(event) {
+    async function enviar(event) {
         event.preventDefault()
         const nuevosErrores = validarSerie(datos)
         setErrores(nuevosErrores)
-
         if (Object.keys(nuevosErrores).length > 0) {
             return
         }
 
-        onAgregar({
-            ...datos, titulo: datos.titulo.trim(), temporadas:
-                Number(datos.temporadas)
-        })
-        setDatos(VACIO)
+        setEnviando(true)
+        try {
+            await onAgregar({
+                ...datos,
+                titulo: datos.titulo.trim(),
+                temporadas: Number(datos.temporadas),
+            })
+            setDatos(VACIO)
+        } catch (err) {
+            // 400: el API manda un mensaje por campo. Otro error: un mensaje general
+            setErrores(err.detalles ?? { general: err.message })
+        } finally {
+            setEnviando(false)
+        }
     }
 
     return (
         <form onSubmit={enviar} noValidate>
+            {errores.general && (
+                <div className="alert alert-danger">{errores.general}</div>
+            )}
+
             <div className="mb-3">
                 <label htmlFor="titulo" className="form-label">Título</label>
                 <input
                     id="titulo"
                     name="titulo"
-                    className={errores.titulo ? 'form-control is-invalid' : 'form-control'}
+                    className={errores.titulo ? 'form-control is-invalid' : 'formcontrol'}
                     value={datos.titulo}
                     onChange={cambiar}
                 />
-                {errores.titulo && <div className="invalid-feedback">{errores.titulo}</div>}
+                {errores.titulo && <div className="invalidfeedback">{
+                    errores.titulo}</div>}
             </div>
 
             <div className="mb-3">
@@ -64,7 +77,8 @@ function FormularioSerie({ onAgregar }) {
                         <option key={opcion} value={opcion}>{opcion}</option>
                     ))}
                 </select>
-                {errores.genero && <div className="invalid-feedback">{errores.genero}</div>}
+                {errores.genero && <div className="invalidfeedback">{
+                    errores.genero}</div>}
             </div>
 
             <div className="mb-3">
@@ -73,32 +87,39 @@ function FormularioSerie({ onAgregar }) {
                     id="temporadas"
                     name="temporadas"
                     type="number"
-                    className={errores.temporadas ? 'form-control is-invalid' : 'form-control'}
+                    className={errores.temporadas ? 'form-control is-invalid' : 'formcontrol'}
                     value={datos.temporadas}
                     onChange={cambiar}
                 />
-                {errores.temporadas && <div className="invalid-feedback">{errores.temporadas}</div>}
+                {errores.temporadas && <div className="invalidfeedback">{
+                    errores.temporadas}</div>}
             </div>
 
             <div className="mb-3">
-                <label htmlFor="miembro" className="form-label">Propuesta por</label>
+                <label htmlFor="miembroId" className="form-label">Propuesta por</label>
                 <select
-                    id="miembro"
-                    name="miembro"
-                    className={errores.miembro ? 'form-select is-invalid' : 'form-select'}
-                    value={datos.miembro}
+                    id="miembroId"
+                    name="miembroId"
+                    className={errores.miembroId ? 'form-select is-invalid' : 'formselect'}
+                    value={datos.miembroId}
                     onChange={cambiar}
                 >
                     <option value="">Elija…</option>
-                    {MIEMBROS.map((opcion) => (
-                        <option key={opcion} value={opcion}>{opcion}</option>
+                    {miembros.map((miembro) => (
+                        <option key={miembro._id}
+                            value={miembro._id}>{miembro.nombre}</option>
                     ))}
                 </select>
-                {errores.miembro && <div className="invalid-feedback">{errores.miembro}</div>}
+                {errores.miembroId && <div className="invalidfeedback">{
+                    errores.miembroId}</div>}
             </div>
 
-            <button type="submit" className="btn btn-primary w-100">
-                Agregar serie
+            <button
+                type="submit"
+                className="btn btn-primary w-100"
+                disabled={enviando}
+            >
+                {enviando ? 'Guardando…' : 'Agregar serie'}
             </button>
         </form>
     )
