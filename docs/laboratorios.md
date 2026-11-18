@@ -651,3 +651,84 @@ Se restauró el código después de cada experimento.
 | 7.4 Sin `await` | En `FormularioSerie.jsx` se quitó `await` delante de `onAgregar`, se detuvo el API y se agregó una serie. | El formulario se limpió, no apareció la serie ni ningún mensaje, y la consola mostró «Uncaught (in promise) Error: No se pudo conectar con el API. ¿Está encendido el servidor?». |
 
 ---
+
+## 15. Cambiar estado y quitar desde React
+
+Ver evidencias 16, 17, 18, 19 y 20 en /docs/capturas.
+
+### Actividad 5: explique el recorrido de Quitar
+
+Recorrido al presionar «Quitar» en una tarjeta, desde React hasta MongoDB y de vuelta:
+
+| # | Pieza | Qué hace |
+|---:|---|---|
+| 1 | `TarjetaSerie` · botón Quitar | Al hacer clic, la tarjeta llama a `onQuitar(serie._id)`. No sabe que existe un API: solo le avisa a `App` qué serie se quiere quitar. |
+| 2 | `App` · `quitar` | `quitar(id)` es `async`: entra al `try` y llama a `await eliminarSerie(id)`. Todavía no cambia la pantalla. |
+| 3 | `seriesApi` · `eliminarSerie` → `pedir` | `eliminarSerie` llama a ``pedir(`/series/${id}`, 'DELETE')``. La plantilla de texto coloca el `_id` en la dirección y, como no hay datos, `pedir` no agrega `Content-Type` ni cuerpo. Hace el `fetch` con `method: 'DELETE'` a `http://localhost:3000/api/series/<_id>`. |
+| 4 | API · `series.routes` → `controller` | `cors` autoriza el origen y `app.js` entrega la petición al router de series, que encuentra `delete('/:id')`, deja el `_id` en `req.params.id` y ejecuta `controlador.eliminar`, que llama a `servicio.eliminar(req.params.id)`. |
+| 5 | API · `series.service` · `eliminar` | Revisa el formato del id con `revisarId` y le pide al repositorio que borre la serie. Si el repositorio respondiera `false`, lanzaría 404 `NO_ENCONTRADA`. |
+| 6 | API · `series.repository` · `deleteOne` | Ejecuta `deleteOne({ _id: new ObjectId(id) })` en MongoDB. La serie se borra, `deletedCount` es 1 y devuelve `true`. El servicio termina sin error y el controlador responde `res.status(204).end()`: 204 sin cuerpo. |
+| 7 | `seriesApi` · `pedir` (respuesta 204) | `fetch` recibe la respuesta. Antes de leer el cuerpo, `pedir` revisa `respuesta.status === 204` y devuelve `null` sin llamar a `respuesta.json()`. |
+| 8 | `App` · `setSeries` | Como `await eliminarSerie(id)` terminó sin error, `quitar` ejecuta `setSeries((actuales) => actuales.filter((serie) => serie._id !== id))` sobre la lista vigente. React vuelve a dibujar: la tarjeta desaparece y el resumen se recalcula. |
+
+**Experimento 4.1 (dos pestañas):** el recorrido se detiene en la fila 6. La serie ya se había borrado desde la pestaña 1, así que `deleteOne` no encuentra nada (`deletedCount` es 0), el repositorio devuelve `false` y el servicio lanza 404 `NO_ENCONTRADA`. En la fila 7, `pedir` recibe un 404, no un 204, y lanza un `Error` con «La serie no existe.». La fila 8 no se ejecuta: el `catch` de `quitar` muestra ese mensaje en la alerta.
+
+**Experimento 4.3 (sin el caso 204):** el recorrido se detiene en la fila 7. El API sí borró la serie y respondió 204, pero `pedir` llamó a `respuesta.json()` sobre un cuerpo vacío y lanzó «Unexpected end of JSON input». La fila 8 no se ejecuta: la tarjeta se queda en pantalla y aparece la alerta, aunque la serie ya no está en la base.
+
+### Actividad 6: el mapa del Maratón completo
+
+| En la pantalla | Función de `seriesApi` | Ruta del API | Función del repositorio |
+|---|---|---|---|
+| Abrir la página | `obtenerSeries` y `obtenerMiembros` | `GET /api/series` y `GET /api/miembros` | `series.repository` · `listar` (`aggregate` con `CON_MIEMBRO`) y `miembros.repository` · `listar` (`find`) |
+| Agregar serie | `crearSerie` | `POST /api/series` | `series.repository` · `crear` (`insertOne`) y `buscarPorId`; antes, `miembros.repository` · `buscarPorId`, a través de `miembros.service` · `existe` |
+| Cambiar estado | `cambiarEstadoSerie` | `PATCH /api/series/:id/estado` | `series.repository` · `cambiarEstado` (`updateOne` con `$set`) y `buscarPorId` |
+| Quitar | `eliminarSerie` | `DELETE /api/series/:id` | `series.repository` · `eliminar` (`deleteOne`) |
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Por qué `pedir()` revisa el 204 antes de llamar a `respuesta.json()`? ¿Qué mostró el experimento 4.3?**
+
+Porque una respuesta 204 No Content no tiene cuerpo: si `pedir` intentara leerlo con `respuesta.json()`, lanzaría «Unexpected end of JSON input» aunque la operación haya salido bien. Por eso, si el estado es 204, devuelve `null` antes de leer el cuerpo. El experimento 4.3 lo mostró: sin ese bloque, la pestaña Red indicó `DELETE 204`, es decir, el API sí borró la serie, pero React mostró la alerta «Unexpected end of JSON input» y dejó la tarjeta. La pantalla y la base no coincidieron hasta recargar, cuando la serie ya no estaba.
+
+**2. ¿Por qué `avanzar` pone en la tarjeta la serie que devolvió el API y no la que calculó React?**
+
+Porque la serie del API es la que realmente quedó guardada en MongoDB: tiene el estado que el API validó y guardó, y el nombre del miembro que agregó el `$lookup`. Así la tarjeta muestra exactamente lo que hay en la base y no una suposición de React. Si el API aplicara otra regla o la serie hubiera cambiado en la base, la pantalla seguiría coincidiendo con ella.
+
+**3. ¿Qué demostró el experimento 4.4 sobre `setSeries((actuales) => …)`?**
+
+Que después de un `await`, la variable `series` puede ser una foto vieja. Con `setSeries(series.filter(…))` y una red lenta, al quitar dos tarjetas seguidas, el segundo `quitar` filtró la lista que había cuando se hizo su clic, en la que la primera tarjeta todavía estaba. Por eso la primera reapareció, aunque las dos peticiones respondieron 204 y al recargar ninguna de las dos estaba. Con la forma con función, React entrega la lista vigente en el momento de actualizar y las dos tarjetas desaparecen.
+
+**4. ¿Por qué `agregar` no tiene `try/catch`, pero `avanzar` y `quitar` sí?**
+
+Porque cada error se muestra en un lugar distinto. Los errores de `agregar` los muestra el formulario, debajo de cada campo o como alerta general, así que `agregar` deja pasar el error hasta `FormularioSerie`. En cambio, `avanzar` y `quitar` se ejecutan desde los botones de las tarjetas, que no tienen dónde mostrar un error; por eso `App` los atrapa y los muestra en la alerta roja de arriba con `setError(err.message)`. Sin ese `catch`, el error quedaría sin atrapar y la persona no vería ningún mensaje.
+
+**5. En el experimento 4.2, ¿qué ventaja y qué riesgo tiene cambiar la pantalla antes de que responda el API?**
+
+La ventaja es que la pantalla responde de inmediato, sin esperar a la red, y la aplicación se siente más rápida. El riesgo es que la pantalla muestre algo que no pasó: con el API apagado y el orden invertido, la tarjeta desapareció aunque la serie nunca se borró, y al encender el API y recargar volvió a aparecer. La pantalla y la base quedan desincronizadas y la persona recibe información falsa.
+
+**6. Con el mapa de la Actividad 6, ¿qué archivos tendría que crear para un recurso nuevo de su proyecto?**
+
+En el servidor, un módulo nuevo en `src/<recurso>/` con sus cuatro capas: `<recurso>.routes.js`, `<recurso>.controller.js`, `<recurso>.service.js` y `<recurso>.repository.js`, más `<recurso>.validacion.js` si el recurso recibe datos de un formulario. Ese router se monta en `app.js` con su prefijo (`app.use('/api/<recurso>', …)`) y sus pruebas se agregan a `requests.http`. En el cliente, un archivo `src/api/<recurso>Api.js` con una función por cada operación, que use `pedir`, y los componentes que lo llaman. Por ejemplo, para las iniciativas del proyecto: `iniciativas.routes.js`, `iniciativas.controller.js`, `iniciativas.service.js`, `iniciativas.repository.js`, `iniciativas.validacion.js` e `iniciativasApi.js`.
+
+### Comprobaciones de las actividades
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| «Cambiar estado» en una serie «Por ver» | Pasa a «Viendo» y el Resumen se actualiza. En la pestaña Red aparece `estado`, método PATCH, estado 200, con la Carga útil `{"estado":"Viendo"}`. |
+| Recargar la página | La serie sigue en «Viendo». |
+| «Quitar» en la serie agregada en la etapa 8 | La tarjeta desaparece. En Red aparece el método DELETE con estado 204, y la pestaña Respuesta está vacía. |
+| Recargar y petición 5 de REST Client | La serie ya no está en ninguno de los dos. |
+| Consola | Sin errores. |
+
+### Actividad 4: cuatro experimentos
+
+Se restauró el código después de cada experimento.
+
+| Experimento | Qué se hizo | Qué se observó |
+|---|---|---|
+| 4.1 Dos pestañas | Con el Maratón abierto en dos pestañas, se quitó una serie en la pestaña 1 y, sin recargar, se presionó «Quitar» en la misma serie en la pestaña 2. | La pestaña 2 mostró la alerta «La serie no existe.» y en Red apareció `DELETE 404`. Al recargarla, la pantalla volvió a coincidir con la base. |
+| 4.2 Servidor apagado: primero el API o primero la pantalla | Con el API detenido se presionó «Quitar». Después se invirtió el orden dentro del `try` de `quitar` (primero `setSeries`, después `await eliminarSerie(id)`) y se repitió. | Con el orden correcto apareció la alerta «No se pudo conectar con el API…» y la tarjeta se quedó. Con el orden invertido apareció la misma alerta, pero la tarjeta desapareció; al encender el API y recargar, volvió: nunca se borró. |
+| 4.3 Sin el caso 204 | En `seriesApi.js` se comentó el `if (respuesta.status === 204)` y se quitó una serie. | Alerta «Unexpected end of JSON input» con `DELETE 204` en la pestaña Red. La tarjeta se quedó, pero después de recargar la serie ya no estaba. |
+| 4.4 La lista vieja | En `quitar` se usó `setSeries(series.filter(…))` y, con la red más lenta, se quitaron dos tarjetas seguidas. | Al terminar las dos peticiones, la primera tarjeta reapareció aunque ambas respondieron 204. Al recargar, ninguna de las dos estaba. |
+
+---

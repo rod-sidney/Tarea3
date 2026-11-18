@@ -4,7 +4,13 @@
 import { useEffect, useState } from 'react'
 import { ESTADOS } from './data/series.js'
 import { siguienteEstado } from './utils/series.js'
-import { obtenerSeries, obtenerMiembros, crearSerie } from './api/seriesApi.js'
+import {
+  obtenerSeries,
+  obtenerMiembros,
+  crearSerie,
+  cambiarEstadoSerie,
+  eliminarSerie,
+} from './api/seriesApi.js'
 import Pagina from './componentes/layout/Pagina.jsx'
 import Panel from './componentes/comunes/Panel.jsx'
 import ListaSeries from './componentes/series/ListaSeries.jsx'
@@ -53,25 +59,33 @@ function App() {
     cantidad: series.filter((serie) => serie.estado === estado).length,
   }))
 
-  // ── Agregar: primero el API, después el estado ──
+  // ── Cambios: primero el API, después el estado ──
   // Sin try/catch: si el API rechaza los datos, el error le llega al formulario
   async function agregar(datos) {
     const creada = await crearSerie(datos)
     setSeries((actuales) => [...actuales, creada])
   }
 
-  // ── Avanzar y quitar: todavía solo en memoria (etapa 9) ──
-  function avanzar(id) {
-    const nuevas = series.map((serie) =>
-      serie._id === id ? { ...serie, estado: siguienteEstado(serie.estado) } :
-        serie
-    )
-    setSeries(nuevas)
+  async function avanzar(id) {
+    const actual = series.find((serie) => serie._id === id)
+    try {
+      const actualizada = await cambiarEstadoSerie(id,
+        siguienteEstado(actual.estado))
+      setSeries((actuales) =>
+        actuales.map((serie) => (serie._id === id ? actualizada : serie))
+      )
+    } catch (err) {
+      setError(err.message)
+    }
   }
-
-  function quitar(id) {
-    const nuevas = series.filter((serie) => serie._id !== id)
-    setSeries(nuevas)
+  
+  async function quitar(id) {
+    try {
+      await eliminarSerie(id)
+      setSeries((actuales) => actuales.filter((serie) => serie._id !== id))
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   return (

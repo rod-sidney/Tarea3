@@ -11,18 +11,26 @@ async function pedir(ruta, metodo = 'GET', datos) {
         opciones.headers = { 'Content-Type': 'application/json' }
         opciones.body = JSON.stringify(datos)
     }
+
     let respuesta
     try {
         respuesta = await fetch(URL_API + ruta, opciones)
     } catch {
         throw new Error('No se pudo conectar con el API. ¿Está encendido el servidor ? ')
     }
+
+    if (respuesta.status === 204) {
+        return null // DELETE: respuesta sin
+        cuerpo
+    }
+
     const cuerpo = await respuesta.json()
     if (!respuesta.ok) {
         const error = new Error(cuerpo.error.mensaje)
         error.detalles = cuerpo.error.detalles // 400: un mensaje por campo
         throw error
     }
+
     return cuerpo
 }
 
@@ -36,4 +44,12 @@ export function obtenerMiembros() {
 
 export function crearSerie(datos) {
     return pedir('/series', 'POST', datos)
+}
+
+export function cambiarEstadoSerie(id, estado) {
+    return pedir(`/series/${id}/estado`, 'PATCH', { estado })
+}
+
+export function eliminarSerie(id) {
+    return pedir(`/series/${id}`, 'DELETE')
 }
