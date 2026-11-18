@@ -38,3 +38,17 @@ export async function crear(serie) {
     const resultado = await coleccion().insertOne(serie)
     return resultado.insertedId
 }
+
+export async function cambiarEstado(id, estado) {
+    const resultado = await coleccion().updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { estado } },
+    )
+    return resultado.matchedCount === 1
+}
+
+export async function eliminar(id) {
+    const resultado = await coleccion()
+        .deleteOne({ _id: new ObjectId(id) })
+    return resultado.deletedCount === 1
+}

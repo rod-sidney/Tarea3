@@ -54,3 +54,34 @@ Content-Type: application/json
 "temporadas": 5,
 "miembroId": "650000000000000000000000"
 }
+
+### 9. Cambiar el estado de una serie → 200
+# Reemplace el id por el _id de Severance (respuesta de la petición 6)
+PATCH {{api}}/series/6afccebf008cde344d403972/estado
+Content-Type: application/json
+
+{ "estado": "Viendo" }
+
+### 10. Un estado que no existe → 400
+PATCH {{api}}/series/6afccebf008cde344d403972/estado
+Content-Type: application/json
+
+{ "estado": "Abandonada" }
+
+### 11. Un id mal formado → 400
+PATCH {{api}}/series/abc/estado
+Content-Type: application/json
+
+{ "estado": "Vista" }
+
+### 12. Un id bien formado que no existe → 404
+PATCH {{api}}/series/650000000000000000000000/estado
+Content-Type: application/json
+
+{ "estado": "Vista" }
+
+### 13. Eliminar una serie → 204
+DELETE {{api}}/series/6afccebf008cde344d403972
+
+### 14. Eliminarla otra vez → 404
+DELETE {{api}}/series/6afccebf008cde344d403972

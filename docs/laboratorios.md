@@ -444,3 +444,80 @@ Ver Evidencias 8, 9, 10.
 | Colección `series` en el panel de MongoDB | Severance tiene `miembroId` guardado como `ObjectId` y `calificaciones: []`. |
 
 ---
+
+## 12. Series: cambiar estado y eliminar
+
+### Actividad 9: explique el recorrido del PATCH
+
+Recorrido de la petición 9 (`PATCH /api/series/:id/estado` con `{ "estado": "Viendo" }`), en orden:
+
+| # | Pieza | Qué hace con esta petición |
+|---:|---|---|
+| 1 | `app.js` · `/api/series` | La petición pasa por `cors` y por `express.json()`, que deja `{ estado: 'Viendo' }` en `req.body`. Como la dirección empieza con `/api/series`, `app.js` la entrega al router de series, que recibe solo la parte `/<id>/estado`. |
+| 2 | `series.routes.js` · `patch('/:id/estado')` | El router encuentra la ruta del método PATCH que coincide con `/:id/estado`, guarda en `req.params.id` el texto que vino en el lugar de `:id` y ejecuta `controlador.cambiarEstado`. |
+| 3 | `series.controller.js` · `cambiarEstado` | Llama a `servicio.cambiarEstado(req.params.id, req.body ?? {})` con el id de la dirección y el cuerpo, y espera el resultado con `await`. |
+| 4 | `utils/revisarId.js` | Es el primer paso del servicio: revisa con `ObjectId.isValid` que el id tenga formato de `ObjectId` (24 caracteres hexadecimales). El `_id` de Severance es válido, así que no lanza nada y el servicio continúa. |
+| 5 | `series.validacion.js` · `validarEstado` | Revisa que `datos.estado` esté en la lista `ESTADOS` (Por ver, Viendo, Vista). «Viendo» es válido, así que devuelve `{}`. |
+| 6 | `series.repository.js` · `cambiarEstado` | Ejecuta `updateOne({ _id: new ObjectId(id) }, { $set: { estado: 'Viendo' } })`. MongoDB encuentra la serie y cambia solo su estado; los demás campos quedan igual. Como `matchedCount` es 1, el repositorio devuelve `true` y el servicio no lanza el 404. |
+| 7 | `series.repository.js` · `buscarPorId` | El servicio lee la serie ya actualizada con `$match` y las etapas de `CON_MIEMBRO`, así que vuelve con `estado: 'Viendo'` y `miembro: 'Sofía'`. |
+| 8 | `series.controller.js` · `res.json` | El controlador recibe la serie actualizada y responde `200 OK` con ella en JSON. |
+
+**Dónde se detienen las otras peticiones** (en las tres, la respuesta la escribe `manejarErrores`):
+
+- **Petición 11** (id `abc`): se detiene en la fila 4. `revisarId` lanza `HttpError(400, 'ID_INVALIDO', …)` antes de validar el estado y sin tocar la base. Respuesta: **400 ID_INVALIDO**, «El identificador no es válido.».
+- **Petición 10** (estado `Abandonada`): se detiene en la fila 5. `validarEstado` devuelve un error en `estado` y el servicio lanza un `HttpError` 400. Respuesta: **400 DATOS_INVALIDOS**, con `detalles.estado`: «El estado debe ser: Por ver, Viendo, Vista.».
+- **Petición 12** (id `650000000000000000000000`): pasa las filas 4 y 5, pero se detiene en la fila 6. `updateOne` no encuentra ninguna serie (`matchedCount` es 0), el repositorio devuelve `false` y el servicio lanza un `HttpError` 404. Respuesta: **404 NO_ENCONTRADA**, «La serie no existe.».
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Por qué el id va en la dirección y el estado nuevo en el cuerpo?**
+
+Porque la dirección identifica el recurso sobre el que se trabaja: `/api/series/:id/estado` dice a cuál serie se refiere la petición y qué parte de ella se modifica. El cuerpo lleva lo que cambia: `{ "estado": "Viendo" }`. Así se separa «a cuál» de «qué cambia». Por la misma razón, DELETE no lleva cuerpo: la dirección ya dice todo lo necesario.
+
+**2. ¿Qué diferencia hay entre responder 400 `ID_INVALIDO` y 404 `NO_ENCONTRADA`? ¿Quién detecta cada uno?**
+
+400 `ID_INVALIDO` significa que el id está mal escrito: no tiene formato de `ObjectId`, como `abc`. Lo detecta `revisarId`, antes de tocar la base. 404 `NO_ENCONTRADA` significa que el id tiene un formato correcto, pero ninguna serie lo tiene. Lo detecta el servicio con lo que responde MongoDB: `matchedCount` o `deletedCount` en 0. El primero es un error de quien envía la petición; el segundo indica que el recurso no existe.
+
+**3. ¿Por qué `revisarId` está en `utils` y no en la carpeta `series`?**
+
+Porque no pertenece a ningún módulo: revisar el formato de un id es una tarea general. Cualquier módulo que reciba un id en la dirección puede importarla y reutilizarla sin depender del módulo series.
+
+**4. ¿Qué demostró el experimento 8.2 sobre `matchedCount` y `modifiedCount`?**
+
+Que no responden la misma pregunta. `matchedCount` indica cuántos documentos encontró el filtro, es decir, si la serie existe; `modifiedCount` indica cuántos cambiaron de verdad. Con `modifiedCount`, la primera vez que se envió la petición 9 respondió 200, pero la segunda respondió 404 «La serie no existe.»: la serie ya estaba en «Viendo», MongoDB no modificó nada y el servicio lo interpretó como que no existía. Por eso la existencia se decide con `matchedCount`.
+
+**5. En el experimento 8.3, la serie se borró aunque REST Client no recibió respuesta. ¿Qué problema causaría esto en React?**
+
+React se quedaría esperando una respuesta que nunca llega: el `await` de la petición no terminaría, así que el código que quita la tarjeta no se ejecutaría y la serie seguiría en pantalla aunque ya no existe en la base. La persona usuaria creería que no se borró e intentaría quitarla otra vez, lo que daría un 404, o solo vería el cambio al recargar. La pantalla y la base quedarían desincronizadas.
+
+**6. ¿Por qué el segundo DELETE a la misma serie responde 404? ¿En qué situación real pasaría?**
+
+Porque el primer DELETE ya la borró. En el segundo, `deleteOne` no encuentra ningún documento con ese `_id` (`deletedCount` es 0), el repositorio devuelve `false` y el servicio lanza 404 `NO_ENCONTRADA`. En la realidad pasaría, por ejemplo, si dos personas del club tienen el tablero abierto y ambas presionan «Quitar» en la misma serie, si un doble clic envía dos peticiones o si la pantalla estaba desactualizada y la serie ya se había eliminado desde otra pestaña.
+
+### Comprobaciones de las actividades
+
+Ver Evidencia 11, 12, 13, 14, 15 en la carpeta /docs/capturas.
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| Petición 9: cambiar a «Viendo» | 200 con Severance en estado «Viendo» y miembro «Sofía». |
+| Petición 9 enviada otra vez | 200 de nuevo: la serie existe, aunque no cambió nada. |
+| Petición 10: estado `Abandonada` | 400 `DATOS_INVALIDOS` con `detalles.estado`: «El estado debe ser: Por ver, Viendo, Vista.». |
+| Petición 11: id `abc` | 400 `ID_INVALIDO`: «El identificador no es válido.». |
+| Petición 12: id bien formado que no existe | 404 `NO_ENCONTRADA`: «La serie no existe.». |
+| Petición 5 y panel de MongoDB | Severance aparece en «Viendo»; en el panel, el documento tiene el estado nuevo y el resto de los campos igual. |
+| Petición 13: eliminar | `204 No Content`, sin cuerpo. |
+| Petición 14: eliminar otra vez | 404 `NO_ENCONTRADA`. |
+| Petición 5 después de eliminar | Severance ya no aparece en la lista. |
+
+Como `GET /api/series` existe desde la etapa 5, la petición 1 se cambió a `GET {{api}}/peliculas` para que siga probando una ruta inexistente.
+
+### Actividad 8: tres experimentos
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 8.1 Sin `revisarId` | Se comentó `revisarId(id)` en `cambiarEstado` de `series.service.js` y se envió la petición 11 (id `abc`). | `500 Internal Server Error` con `ERROR_INTERNO`, y en la terminal `BSONError: input must be a 24 character hex string, 12 byte Uint8Array, or an integer`, lanzado por `new ObjectId` en `series.repository.js`. El error lo cometió quien envió la petición, pero recibió un 500 que no le dice qué hizo mal. |
+| 8.2 `modifiedCount` en lugar de `matchedCount` | En `cambiarEstado` de `series.repository.js` se usó `modifiedCount` y se envió la petición 9 dos veces seguidas. | La primera vez respondió 200; la segunda, 404 «La serie no existe.», porque el estado ya era «Viendo» y MongoDB no modificó nada (`modifiedCount` = 0). |
+| 8.3 Sin `.end()` | Se cambió `res.status(204).end()` por `res.status(204)` y se envió la petición 13. | REST Client se quedó esperando sin mostrar respuesta y hubo que cancelar la petición. Aun así, la petición 5 mostró que la serie sí se borró: el servidor hizo su trabajo, pero no avisó. |
+
+---

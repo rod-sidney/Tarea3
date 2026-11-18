@@ -4,8 +4,9 @@
 import { ObjectId } from 'mongodb'
 import * as repositorio from './series.repository.js'
 import * as miembros from '../miembros/miembros.service.js'
-import { validarSerie } from './series.validacion.js'
+import { validarSerie, validarEstado } from './series.validacion.js'
 import { HttpError } from '../utils/HttpError.js'
+import { revisarId } from '../utils/revisarId.js'
 
 export async function listar() {
     return repositorio.listar()
@@ -33,6 +34,28 @@ export async function crear(datos) {
         miembroId: new ObjectId(datos.miembroId),
         calificaciones: [],
     })
-    
+
     return repositorio.buscarPorId(id)
+}
+
+export async function cambiarEstado(id, datos) {
+    revisarId(id)
+    const errores = validarEstado(datos)
+    if (Object.keys(errores).length > 0) {
+        throw new HttpError(400, 'DATOS_INVALIDOS',
+            'Revise los datos enviados.', errores)
+    }
+    const existe = await repositorio.cambiarEstado(id, datos.estado)
+    if (!existe) {
+        throw new HttpError(404, 'NO_ENCONTRADA', 'La serie no existe.')
+    }
+    return repositorio.buscarPorId(id)
+}
+
+export async function eliminar(id) {
+    revisarId(id)
+    const existia = await repositorio.eliminar(id)
+    if (!existia) {
+        throw new HttpError(404, 'NO_ENCONTRADA', 'La serie no existe.')
+    }
 }

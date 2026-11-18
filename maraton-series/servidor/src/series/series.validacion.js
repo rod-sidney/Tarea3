@@ -18,7 +18,7 @@ export function validarSerie(datos) {
     if (!GENEROS.includes(datos.genero)) {
         errores.genero = 'Elija un género de la lista.'
     }
-    
+
     const t = datos.temporadas
     if (!Number.isInteger(t) || t < 1 || t > 30) {
         errores.temporadas = 'Indique un número entero entre 1 y 30.'
@@ -28,6 +28,16 @@ export function validarSerie(datos) {
         !ObjectId.isValid(datos.miembroId)) {
         errores.miembroId = 'Indique quién propone la serie.'
     }
+
+    return errores
+}
+
+export function validarEstado(datos) {
+    const errores = {}
     
+    if (!ESTADOS.includes(datos.estado)) {
+        errores.estado = `El estado debe ser: ${ESTADOS.join(', ')}.`
+    }
+
     return errores
 }
