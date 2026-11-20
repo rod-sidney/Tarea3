@@ -3,10 +3,14 @@
 // No cambia el estado: le avisa al padre (App) qué pasó.
 
 import { claseEstado } from '../../utils/series.js'
+import { Link } from 'react-router'
 
 function TarjetaSerie({ serie, onAvanzar, onQuitar }) {
   return (
     <article className="card h-100 tarjeta-serie">
+      <h3 className="h6 card-title">
+        <Link to={`/series/${serie._id}`}>{serie.titulo}</Link>
+      </h3>
       <div className="card-body d-flex flex-column">
         <span className={'badge align-self-start mb-2 ' + claseEstado(serie.estado)}>
           {serie.estado}

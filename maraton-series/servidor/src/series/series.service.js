@@ -12,6 +12,15 @@ export async function listar() {
     return repositorio.listar()
 }
 
+export async function obtener(id) {
+    revisarId(id)
+    const serie = await repositorio.buscarPorId(id)
+    if (!serie) {
+        throw new HttpError(404, 'NO_ENCONTRADA', 'La serie no existe.')
+    }
+    return serie
+}
+
 export async function crear(datos) {
     const errores = validarSerie(datos)
 

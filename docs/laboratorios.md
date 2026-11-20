@@ -732,3 +732,82 @@ Se restauró el código después de cada experimento.
 | 4.4 La lista vieja | En `quitar` se usó `setSeries(series.filter(…))` y, con la red más lenta, se quitaron dos tarjetas seguidas. | Al terminar las dos peticiones, la primera tarjeta reapareció aunque ambas respondieron 204. Al recargar, ninguna de las dos estaba. |
 
 ---
+
+## 16. React Router: varias páginas
+
+Ver evidencias 21, 22, 23.
+
+### Actividad 11: explique el recorrido
+
+Recorrido desde que se hace clic en el título de una serie hasta que se ve su detalle:
+
+| # | Pieza | Qué hace |
+|---:|---|---|
+| 1 | `TarjetaSerie` · `<Link to={…}>` | El título de la tarjeta es un ``<Link to={`/series/${serie._id}`}>``. Al hacer clic, `Link` evita la navegación normal del navegador, así que no se pide otra página al servidor, y le indica al router que vaya a `/series/<_id>`. |
+| 2 | `BrowserRouter` (API de historial) | Usa `history.pushState` para cambiar la dirección a `/series/<_id>` y agregar una entrada al historial, por eso después funciona el botón Atrás. No pide nada al servidor: solo avisa que la dirección cambió. |
+| 3 | `App` · `<Routes>` | Lee la nueva dirección y elige la ruta que corresponde: `series/:id`, que es más específica que `*`. Esa ruta está dentro de la ruta de diseño, así que se dibujan `Layout` y, como hija, `DetalleSerie`. |
+| 4 | `Layout` · `<Outlet />` | `Layout` dibuja el `Encabezado`, donde el `NavLink` «Series» queda activo porque la dirección empieza con `/series`, y en el lugar de `<Outlet />` dibuja `DetalleSerie`. |
+| 5 | `DetalleSerie` · `useParams` | `const { id } = useParams()` lee el segmento dinámico `:id` de la dirección: el `_id` de la serie, como texto. En este primer dibujo `cargando` es `true`, así que se muestra «Cargando serie…». |
+| 6 | `DetalleSerie` · `useEffect` | Después del dibujo se ejecuta el efecto, que depende de `[id]`. Crea un `AbortController`, llama a `cargar()` (que pone `cargando` en `true` y `error` en `null`) y devuelve la limpieza `() => controlador.abort()`. En desarrollo, `StrictMode` monta, limpia y vuelve a montar el efecto: la primera petición se cancela y la segunda se completa. |
+| 7 | `seriesApi` · `obtenerSerie` → `pedir` | `obtenerSerie(id, controlador.signal)` llama a ``pedir(`/series/${id}`, 'GET', undefined, senal)``, y `pedir` hace el `fetch` a `http://localhost:3000/api/series/<_id>` con la señal del controlador para que la petición se pueda cancelar. |
+| 8 | API · `GET /api/series/:id` | El router de series encuentra `get('/:id')` y el controlador `obtener` llama a `servicio.obtener(id)`, que revisa el formato con `revisarId` y busca la serie con `repositorio.buscarPorId(id)`, con el `$lookup`. Como existe, el API responde 200 con la serie y el nombre de su miembro. |
+| 9 | `DetalleSerie` · `setSerie` y `setCargando` | `pedir` devuelve el cuerpo, `setSerie(…)` guarda la serie y `setCargando(false)` termina la carga. React vuelve a dibujar y muestra la tarjeta del detalle: el estado con su color, el título, el género, las temporadas, quién la propuso y el enlace «← Volver a las series». |
+
+**Con la dirección `/peliculas`:** el recorrido cambia en la fila 3. `<Routes>` no encuentra ninguna ruta que coincida, así que elige `path="*"`, y en la fila 4 el `Outlet` de `Layout` dibuja `NoEncontrada`: «404 — Esa página no existe.» con el botón «Volver al inicio». Las filas 5 a 9 no ocurren y no se hace ninguna petición al API: el 404 lo decide el router en el navegador.
+
+**Con la dirección `/series/650000000000000000000000`:** las filas 1 a 7 son iguales, porque la dirección sí coincide con `series/:id`. Cambia la fila 8: el id pasa `revisarId`, pero `buscarPorId` no encuentra ninguna serie y el servicio lanza 404 `NO_ENCONTRADA`. En la fila 9, `pedir` lanza un `Error` con «La serie no existe.» y `error.estado = 404`; en lugar de `setSerie`, el `catch` ejecuta `setError({ mensaje, estado })`. La página muestra «Serie no encontrada», el mensaje del API y el enlace para volver a las series.
+
+### Preguntas del recuadro "Reflexiona"
+
+**1. ¿Cómo logra React Router cambiar de página sin pedir otra página al servidor? ¿Qué mostró el experimento 10.1?**
+
+Con React Router sigue habiendo un solo `index.html`. Al hacer clic en un `Link`, el router evita la navegación normal y usa la API de historial del navegador (`history.pushState`) para cambiar la dirección y agregar una entrada al historial, sin pedir nada al servidor. Después lee la nueva dirección y `<Routes>` dibuja el componente que le corresponde: es una aplicación de una sola página con enrutamiento del lado del cliente. El experimento 10.1 lo mostró: con `<a href="/series">`, en la pestaña Red apareció una petición de tipo documento a `/series`, es decir, el navegador pidió la página entera otra vez y React empezó de cero. Con `Link` no hubo petición de documento: solo cambió lo que se dibuja.
+
+**2. ¿Por qué la ruta de `Layout` no tiene `path` y qué hace `<Outlet />`?**
+
+Porque es una ruta de diseño: no agrega nada a la dirección, solo envuelve a las demás rutas para que todas compartan el encabezado y el contenedor. `<Outlet />` es el hueco donde la ruta padre dibuja la ruta hija que coincide con la dirección: `Inicio`, `PaginaSeries`, `NuevaSerie`, `DetalleSerie` o `NoEncontrada`. Sin él, como mostró el experimento 10.2, solo se ve el encabezado.
+
+**3. ¿Qué diferencia hay entre el 404 de `/peliculas` y el de `/series/6500…`? ¿Quién detecta cada uno?**
+
+El 404 de `/peliculas` lo detecta React Router en el navegador: la dirección no coincide con ninguna ruta de `App.jsx`, así que se elige `path="*"` y se dibuja `NoEncontrada`, sin hacer ninguna petición al API. La dirección `/series/6500…` sí coincide con `series/:id`: se dibuja `DetalleSerie`, que pide la serie al API, y es el servidor el que detecta que ninguna serie tiene ese `_id` y responde 404 `NO_ENCONTRADA`. `DetalleSerie` reconoce ese código en `err.estado` y muestra «Serie no encontrada».
+
+**4. ¿Por qué el efecto del detalle depende de `[id]`? ¿Qué pasaría con `[]`?**
+
+Porque la serie que se muestra depende del `id` de la dirección. Con `[id]`, el efecto se vuelve a ejecutar cada vez que cambia el id y pide la serie correcta. Con `[]` se ejecutaría solo al montar el componente: si se pasara de un detalle a otro sin salir de la página, la dirección cambiaría, pero la página seguiría mostrando la serie anterior.
+
+**5. ¿Qué hace la limpieza del efecto y qué mostraron los experimentos 10.3 y 10.4?**
+
+La limpieza, `return () => controlador.abort()`, cancela la petición pendiente cuando el id cambia o cuando se sale de la página, para que una respuesta que ya no corresponde no sobrescriba el estado. React la ejecuta antes de volver a correr el efecto o al desmontar el componente. El experimento 10.3 mostró que sin limpieza, al abrir un detalle, las dos ejecuciones del efecto que provoca `StrictMode` completaron su petición (dos respuestas 200 y ninguna cancelada) y las dos escribieron el estado; aquí no se nota porque piden la misma serie, pero si el id cambiara rápido, una respuesta vieja podría llegar después y mostrar la serie equivocada. El experimento 10.4 mostró por qué la cancelación debe tratarse aparte: si `pedir` no deja pasar el `AbortError`, la petición cancelada se convierte en «No se pudo conectar con el API…» y la página muestra «No se pudo cargar la serie», aunque la segunda petición sí funcionó.
+
+**6. ¿Qué se gana al guardar los filtros en la dirección? ¿Cómo se usaría lo mismo para paginar?**
+
+Los filtros sobreviven a una recarga, el botón Atrás vuelve al filtro anterior y el enlace se puede compartir o guardar con los filtros aplicados, por ejemplo `/series?estado=Viendo&miembro=Ana`. Además, dejan de ser estado de React: se derivan de la dirección en cada dibujo. Para paginar se haría lo mismo con parámetros como `?page=2&size=10`: la página los lee con `useSearchParams`, con un valor por defecto si no vienen; los botones «Anterior» y «Siguiente» los cambian con `setParametros`; y esos valores se envían al API para que devuelva solo esa página.
+
+### Comprobaciones de las actividades
+
+| Comprobación | Resultado obtenido |
+|---|---|
+| Peticiones 15 y 16 de `requests.http` | La 15 responde 200 con la serie y su miembro; la 16, 404. |
+| Abrir `/` | Se ve Inicio, con «Inicio» resaltado en el menú. |
+| Clic en «Ver series» | Lleva a `/series` con la lista y «Series» resaltado. En Red aparecen los GET a `series` y `miembros`. |
+| Clic en el título de una serie | Lleva a `/series/<id>` con el detalle. En Red hay dos GET a `series/<id>`, uno cancelado, por `StrictMode`. |
+| Botón Atrás | Vuelve a `/series` sin recargar la página. |
+| F5 en un detalle | Se vuelve a cargar el mismo detalle. |
+| `/series/650000000000000000000000` | «Serie no encontrada»: el API respondió 404. |
+| `/series/abc` | «No se pudo cargar la serie» con «El identificador no es válido.»: el API respondió 400. |
+| `/peliculas` | La página 404 del router. |
+| «+ Agregar una serie» | Lleva a `/series/nueva` y el menú sigue resaltando «Series». Al guardar una serie válida vuelve a `/series` con la serie nueva; con el formulario vacío se queda en la página con los mensajes de error. |
+| Filtros en la dirección | Con Estado = Por ver, la dirección cambia a `/series?estado=Por+ver`; al elegir además a Ana, a `/series?estado=Por+ver&miembro=Ana`. Al recargar se mantienen y con Atrás se vuelve al filtro anterior. |
+| Consola | Solo aparecen los avisos «Failed to load resource» de las pruebas 404 y 400; ningún otro error. |
+
+### Actividad 10: cinco experimentos
+
+| Experimento | Qué se cambió | Qué se observó |
+|---|---|---|
+| 10.1 `<a href>` en lugar de `Link` | En `Inicio.jsx`, el `Link` por `<a className="btn btn-primary" href="/series">`, con la pestaña Red sin filtro (Todo). | Al hacer clic en «Ver series» apareció una petición de tipo documento a `/series`: el navegador pidió la página entera y React empezó de cero. Con `Link` no aparece esa petición. |
+| 10.2 Sin `<Outlet />` | Se borró `<Outlet />` en `Layout.jsx`. | En todas las páginas solo se veía el encabezado: las rutas hijas coincidían, pero la ruta padre no tenía dónde dibujarlas. |
+| 10.3 Sin limpieza | Se borró `return () => controlador.abort()` en `DetalleSerie.jsx` y se abrió un detalle. | Con limpieza: 1 petición completa y 1 cancelada. Sin limpieza: 2 peticiones completas (200) y ninguna cancelada; las dos escribieron el estado. |
+| 10.4 Una cancelación tratada como falla | En el `catch` de `pedir` se borró el `if (err.name === 'AbortError')` y se abrió un detalle con el servidor encendido. | La página mostró «No se pudo cargar la serie» y «No se pudo conectar con el API. ¿Está encendido el servidor?», aunque la segunda petición sí funcionó. |
+| 10.5 La ruta `*` primero | En `App.jsx`, la ruta `path="*"` se movió al primer lugar dentro de `Layout`. | Todo siguió funcionando en `/`, `/series` y el detalle: React Router no prueba las rutas en orden, sino que elige la más específica. |
+
+---

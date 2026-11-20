@@ -8,6 +8,11 @@ export async function listar(req, res) {
     res.json(series)
 }
 
+export async function obtener(req, res) {
+    const serie = await servicio.obtener(req.params.id)
+    res.json(serie)
+}
+
 export async function crear(req, res) {
     const serie = await servicio.crear(req.body ?? {})
     res.status(201).json(serie)

@@ -85,3 +85,11 @@ DELETE {{api}}/series/6afd186957df91318da7c2fa
 
 ### 14. Eliminarla otra vez → 404
 DELETE {{api}}/series/6afd186957df91318da7c2fa
+
+### 15. Detalle de una serie → 200
+# Reemplace el id por el _id de una serie (respuesta de la petición 5)
+GET {{api}}/series/6afce2378322712265ba4bde
+
+
+### 16. Detalle de una serie que no existe → 404
+GET {{api}}/series/650000000000000000000000
